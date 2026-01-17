@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DataCite Unified Console</title>
+
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.datatables.net/1.13.7/css/jquery.dataTables.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+
+    <style>
+        body { font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; padding: 20px 0 40px 0; background-color: #f8f9fa; }
+        .container { max-width: 1400px; }
+        pre { background-color: #fff; padding: 15px; border: 1px solid #dee2e6; border-radius: .375rem; max-height: 400px; overflow-y: auto; font-size: 0.875em; white-space: pre-wrap; word-break: break-all; }
+        #app-view { display: none; }
+        #login-view .card { max-width: 600px; margin: 40px auto; }
+        .spinner-border-sm { vertical-align: -0.125em; }
+        .doi-link { font-family: monospace; }
+        .settings-icons .btn-sm { margin: 0 2px; }
+        #doisTable .text-center { text-align: center; }
+        #editor-modal-content { height: 60vh; font-family: monospace; font-size: 0.9em; }
+        .operation-block { border: 1px solid #ced4da; border-radius: .5rem; padding: 1rem; margin-bottom: 1rem; background-color: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.05); }
+        .operation-block h6 { border-bottom: 1px solid #e9ecef; padding-bottom: .5rem; margin-bottom: 1rem; color: #0d6efd; }
+        .form-label { font-weight: 500; }
+        .form-text { font-size: 0.8em; }
+        .bi-question-circle-fill { cursor: pointer; color: #6c757d; margin-left: 5px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+
+    <div id="login-view">
+        <div class="card shadow-sm">
+            <div class="card-header text-center bg-primary text-white"><h2>DataCite Unified Console</h2></div>
+            <div class="card-body p-4">
+                <p class="text-muted text-center">Please log in to your DataCite Repository account to enable management features.</p>
+                <div class="mb-3">
+                    <label for="api_base" class="form-label">DataCite Environment</label>
+                    <select id="api_base" class="form-select">
+                        <option value="https://api.test.datacite.org" selected>Test Environment</option>
+                        <option value="https://api.datacite.org">Production Environment</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label for="repositoryId" class="form-label">Repository ID</label>
+                    <input type="text" id="repositoryId" class="form-control" placeholder="e.g., YOUR.REPO">
+                </div>
+                <div class="mb-3">
+                    <label for="password" class="form-label">Password</label>
+                    <input type="password" id="password" class="form-control" placeholder="Your repository password">
+                </div>
+                <div class="d-grid"><button id="loginBtn" class="btn btn-primary btn-lg"><span class="spinner-border spinner-border-sm" role="status" style="display: none;"></span> Login</button></div>
+                <div id="loginStatus" class="mt-3"></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="app-view">
+        <header class="d-flex justify-content-between align-items-center mb-4 p-3 bg-white rounded shadow-sm">
+            <div id="user-info-header" class="text-muted">Not logged in. Using public access.</div>
+            <button id="logoutBtn" class="btn btn-outline-secondary" style="display: none;">Logout</button>
+        </header>
+
+        <ul class="nav nav-tabs" id="main-tabs" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="tab-btn-manager" data-bs-toggle="tab" data-bs-target="#tab-pane-manager" type="button" role="tab">DOI Manager</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="tab-btn-upload" data-bs-toggle="tab" data-bs-target="#tab-pane-upload" type="button" role="tab">Batch Upload</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="tab-btn-adv-batch" data-bs-toggle="tab" data-bs-target="#tab-pane-adv-batch" type="button" role="tab">Advanced Batch Update</button>
+            </li>
+        </ul>
+
+        <div class="tab-content pt-3">
+            <div class="tab-pane fade show active" id="tab-pane-manager" role="tabpanel">
+                <div class="card"><div class="card-header"><h5>List and Manage DOIs</h5></div>
+                    <div class="card-body">
+                        <div class="row g-3 mb-3">
+                            <div class="col-md-5"><label for="filter_prefix_select" class="form-label">Filter by Prefix:</label><select id="filter_prefix_select" class="form-select"></select></div>
+                            <div class="col-md-5"><label for="filter_query" class="form-label">Filter by Query:</label><input type="text" class="form-control" id="filter_query" placeholder="e.g., publicationYear:2023 OR climate"></div>
+                            <div class="col-md-2 align-self-end"><button id="btnFetchDois" class="btn btn-success w-100">Fetch DOIs</button></div>
+                        </div>
+                        <div class="table-responsive"><table id="doisTable" class="display table table-striped table-hover" style="width:100%"></table></div>
+                        <pre id="fetchStatus" class="mt-2"></pre>
+                        <div id="downloadDisplayedSection" class="mt-3 pt-3 border-top" style="display: none;"><h6>Download Displayed Results</h6><div class="row g-3"><div class="col-md-4"><label for="list_download_format" class="form-label">Format(s) in ZIP:</label><select id="list_download_format" class="form-select form-select-sm"><option value="json_attributes" selected>JSON</option><option value="xml">XML only</option><option value="both">Both (JSON & XML)</option></select></div><div class="col-md-4 align-self-end"><button id="btnDownloadDisplayedDois" class="btn btn-secondary btn-sm w-100">Download Displayed as ZIP</button></div></div></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tab-pane fade" id="tab-pane-upload" role="tabpanel">
+                <div class="card"><div class="card-header"><h5>Batch Upload (JSON & XML)</h5></div>
+                    <div class="card-body">
+                        <div class="alert alert-info"><strong>How it works:</strong><ol><li>Select one or more <code>.json</code> or <code>.xml</code> metadata files.</li><li>(Optional) Choose a status (event) to apply to all uploaded DOIs.</li><li>Click "Start Upload". The tool will automatically create new DOIs or update existing ones.</li></ol></div>
+                        <div class="row g-3"><div class="col-md-8"><label for="upload_files_input" class="form-label">1. Select Files</label><input class="form-control" type="file" id="upload_files_input" multiple accept=".json,.xml"></div><div class="col-md-4"><label for="upload_event_select" class="form-label">2. Apply Status (Event)</label><select id="upload_event_select" class="form-select"><option value="" selected>-- No change --</option><option value="publish">Publish</option><option value="register">Register</option><option value="hide">Hide</option></select></div></div>
+                        <div class="d-grid mt-3"><button id="start_upload_btn" class="btn btn-primary" disabled>Start Upload</button></div>
+                        <hr class="my-4"><h6>Upload Progress</h6><pre id="upload_status_log"></pre>
+                        <div id="upload_results_area" class="mt-4" style="display:none;"><h6>Results Summary</h6><div class="table-responsive"><table id="upload_results_table" class="display" width="100%"></table></div></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tab-pane fade" id="tab-pane-adv-batch" role="tabpanel">
+                <div class="card"><div class="card-header"><h5>Advanced Batch Update with Conditional Logic</h5></div>
+                    <div class="card-body">
+                        <div class="alert alert-info"><h4 class="alert-heading">How to use this tool</h4><p>Perform complex, conditional updates on multiple DOIs. Define one or more "operations" to apply to each DOI matching your filters.</p></div>
+                        <div class="alert alert-danger"><strong>Warning:</strong> This is a powerful tool. Always perform a <strong>Dry Run</strong> first to verify changes.</div>
+                        <h6>1. Filter DOIs to Process</h6>
+                        <div class="row g-3 mb-3 p-3 border rounded bg-light"><div class="col-md-4"><label for="adv_batch_prefix_select" class="form-label">Filter by Prefix:</label><select id="adv_batch_prefix_select" class="form-select"></select></div><div class="col-md-5"><label for="adv_batch_query" class="form-label">Filter by Query:</label><input type="text" class="form-control" id="adv_batch_query" placeholder="e.g., publicationYear:2023"></div><div class="col-md-3 d-flex align-items-end"><div class="form-check form-switch fs-5"><input class="form-check-input" type="checkbox" role="switch" id="adv_batch_dry_run" checked><label class="form-check-label" for="adv_batch_dry_run">Dry Run</label></div></div></div>
+                        <h6>2. Define Update Operations</h6>
+                        <div id="adv_batch_operations_container"></div>
+                        <button id="adv_batch_add_op_btn" class="btn btn-success mt-2"><i class="bi bi-plus-circle"></i> Add another operation</button><hr>
+                        <h6>3. Execute</h6><button id="adv_batch_start_btn" class="btn btn-warning w-100">Validate and Start Batch Update</button><hr>
+                        <button id="btnUpdateContainer" class="btn btn-secondary w-100" style="display: none">Start Update Container</button>
+                        <div id="adv_batch_results_area" class="mt-4" style="display:none;"><hr><h6>Results Summary</h6><pre id="adv_batch_final_summary"></pre><h6>Affected DOIs</h6><div class="table-responsive"><table id="adv_batch_results_table" class="display" width="100%"></table></div></div>
+                        <pre id="adv_batch_status" class="mt-3"></pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="operation-block-template" style="display: none;"><div class="operation-block"><div class="d-flex justify-content-between align-items-center"><h6 class="operation-title mb-0">Operation X</h6><button type="button" class="btn-close remove-op-btn"></button></div><hr class="my-2"><div class="row g-2"><div class="col-12"><label class="form-label small">Attribute to Modify <i class="bi bi-question-circle-fill" data-bs-toggle="popover" title="Attribute to Modify" data-bs-content="The full path to the attribute you want to change, using dot-notation. For lists, use `[]`. Example: `titles[].title`"></i></label><input type="text" class="form-control form-control-sm" name="attribute" placeholder="e.g., publisher or titles[].title"></div><div class="col-md-6"><label class="form-label small">Regex Pattern (optional) <i class="bi bi-question-circle-fill" data-bs-toggle="popover" title="Regex Pattern" data-bs-content="A JavaScript regular expression to find the part of the attribute's value you want to replace. If left empty, the entire value will be replaced."></i></label><input type="text" class="form-control form-control-sm" name="pattern" placeholder="e.g., Old Text"></div><div class="col-md-6"><label class="form-label small">Replacement Value <i class="bi bi-question-circle-fill" data-bs-toggle="popover" title="Replacement Value" data-bs-content="The new value. Can be a simple string or a valid JSON object (e.g., `{'name': 'New Name'}`). Leave empty for the 'Extract & Set' mode."></i></label><textarea class="form-control form-control-sm" name="replacement" rows="1" placeholder="e.g., New Text or JSON {}"></textarea></div></div><div class="mt-2"><button type="button" class="btn btn-sm btn-outline-secondary toggle-condition-btn">Add Condition</button></div><div class="condition-fields mt-2 p-2 border bg-white" style="display: none;"><label class="form-label small text-muted">Condition: Update only if this is met.</label><div class="row g-2"><div class="col-12"><label class="form-label small">Condition Attribute <i class="bi bi-question-circle-fill" data-bs-toggle="popover" title="Condition Attribute" data-bs-content="Path to an attribute whose value will be checked. The main update only runs if the `Condition Pattern` is found here."></i></label><input type="text" class="form-control form-control-sm" name="condition_attribute" placeholder="e.g., types.resourceTypeGeneral"></div><div class="col-12"><label class="form-label small">Condition Pattern (Regex) <i class="bi bi-question-circle-fill" data-bs-toggle="popover" title="Condition Pattern" data-bs-content="A regex to test against the value of the Condition Attribute. Use capturing groups `()` for 'Extract & Set' mode. Example: `^(Report|Text)$`"></i></label><input type="text" class="form-control form-control-sm" name="condition_pattern"></div></div><div class="form-text small"><strong>Tip:</strong> If `Replacement Value` is left empty, the value matched by this pattern will be used as the replacement.</div></div></div></div>
+
+<div class="modal fade" id="editorModal" tabindex="-1"><div class="modal-dialog modal-xl"><div class="modal-content"><div class="modal-header"><h5 class="modal-title" id="editorModalLabel">Edit Metadata</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><textarea id="editor-modal-content" class="form-control"></textarea></div><div class="modal-footer"><button type="button" class="btn btn-outline-secondary" id="editorCopyBtn">Copy</button><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button><button type="button" class="btn btn-primary" id="editorUpdateBtn">Update</button></div></div></div></div>
+<div class="modal fade" id="statusModal" tabindex="-1"><div class="modal-dialog"><div class="modal-content"><div class="modal-header"><h5 class="modal-title">Change DOI Status</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><p>Select new event for DOI: <strong id="statusModalDoi"></strong></p><select id="statusModalSelect" class="form-select"></select></div><div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button><button type="button" class="btn btn-primary" id="statusModalUpdateBtn">Apply Event</button></div></div></div></div>
+<div class="modal fade" id="deleteModal" tabindex="-1"><div class="modal-dialog"><div class="modal-content"><div class="modal-header bg-danger text-white"><h5 class="modal-title">Confirm Deletion</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><p>Are you sure you want to delete this draft DOI? This action cannot be undone.</p><p><strong>DOI:</strong> <span id="deleteModalDoi"></span></p></div><div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button><button type="button" class="btn btn-danger" id="deleteModalConfirmBtn">Yes, Delete this DOI</button></div></div></div></div>
+<div class="modal fade" id="downloadConfirmModal" tabindex="-1"><div class="modal-dialog"><div class="modal-content"><div class="modal-header"><h5 class="modal-title">Confirm Download</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><p>This will download <strong id="downloadConfirmCount">N/A</strong> DOIs. Proceed?</p></div><div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button><button type="button" class="btn btn-primary" id="proceedDownloadBtn">Proceed</button></div></div></div></div>
+<div class="modal fade" id="confirmation-modal" tabindex="-1"><div class="modal-dialog"><div class="modal-content"><div class="modal-header bg-danger text-white"><h5 class="modal-title">Confirm Live Run</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><p>You are about to perform a <strong class="text-danger">LIVE UPDATE</strong>. This will permanently modify data in the DataCite repository.</p><p>Please review your filters and operations carefully before proceeding.</p><div id="confirmation-summary" class="alert alert-secondary"></div></div><div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button><button type="button" class="btn btn-danger" id="confirm-live-run-btn">I understand, proceed with live update</button></div></div></div></div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.7/js/jquery.dataTables.min.js"></script>
+<script src="app.js"></script>
+
+</body>
+</html>
